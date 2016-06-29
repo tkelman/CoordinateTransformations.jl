@@ -1,5 +1,8 @@
 # Some common transformations are defined here
 
+abstract AbstractAffineTransformation{OutType, InType} <: AbstractTransformation{OutType, InType}
+abstract RigidTransformation{OutType, InType} <: AbstractAffineTransformation{OutType, InType}
+
 ###################
 ### Translation ###
 ###################
@@ -11,7 +14,7 @@
 Construct the `Translation` transformation for translating Cartesian points
 (`FixedVector`s).
 """
-immutable Translation{N, T} <: AbstractTransformation{FixedVector{N}, FixedVector{N}}
+immutable Translation{N, T} <: RigidTransformation{FixedVector{N}, FixedVector{N}}
     dx::Vec{N, T}
 end
 Translation(x,y) = Translation(Vec(x,y))
@@ -77,7 +80,7 @@ compose(t1::RotationPolar, t2::RotationPolar) = RotationPolar(t1.angle + t2.angl
 Construct the `Rotation2D` transformation for rotating 2D Cartesian points
 (i.e. `FixedVector{2}`s) about the origin.
 """
-immutable Rotation2D{T} <: AbstractTransformation{FixedVector, FixedVector{2}}
+immutable Rotation2D{T} <: RigidTransformation{FixedVector, FixedVector{2}}
     angle::T
     sin::T
     cos::T
@@ -119,7 +122,7 @@ compose(t1::Rotation2D, t2::Rotation2D) = Rotation2D(t1.angle + t2.angle)
 Construct the `Rotation` transformation for rotating 3D Cartesian points
 (i.e. `FixedVector{3}`s) about the origin. I
 """
-immutable Rotation{R, T} <: AbstractTransformation{FixedVector{3}, FixedVector{3}}
+immutable Rotation{R, T} <: RigidTransformation{FixedVector{3}, FixedVector{3}}
     rotation::R
     matrix::Mat{3,3,T}
 end
@@ -252,7 +255,7 @@ Construct the `RotationXY` transformation for rotating 3D Cartesian points
 
 (see also `Rotation`, `RotationYZ`, `RotationZX` and `euler_rotation`)
 """
-immutable RotationXY{T} <: AbstractTransformation{FixedVector{3}, FixedVector{3}}
+immutable RotationXY{T} <: RigidTransformation{FixedVector{3}, FixedVector{3}}
     angle::T
     sin::T
     cos::T
@@ -265,7 +268,7 @@ Construct the `RotationYZ` transformation for rotating 3D Cartesian points
 
 (see also `Rotation`, `RotationXY`, `RotationZX` and `euler_rotation`)
 """
-immutable RotationYZ{T} <: AbstractTransformation{FixedVector{3}, FixedVector{3}}
+immutable RotationYZ{T} <: RigidTransformation{FixedVector{3}, FixedVector{3}}
     angle::T
     sin::T
     cos::T
@@ -278,7 +281,7 @@ Construct the `RotationZX` transformation for rotating 3D Cartesian points
 
 (see also `Rotation`, `RotationXY`, `RotationYZ` and `euler_rotation`)
 """
-immutable RotationZX{T} <: AbstractTransformation{FixedVector{3}, FixedVector{3}}
+immutable RotationZX{T} <: RigidTransformation{FixedVector{3}, FixedVector{3}}
     angle::T
     sin::T
     cos::T
@@ -426,3 +429,59 @@ end
 function euler_rotation(θ₁, θ₂, θ₃, order::Union{Rotations.EulerXZX, Type{Rotations.EulerXZX}})
     RotationYZ(θ₁) ∘ RotationXY(θ₂) ∘ RotationYZ(θ₃)
 end
+
+
+######################################
+### General Affine Transformations ###
+######################################
+immutable AffineTransformation{N, T} <: AbstractAffineTransformation{FixedVector{N}, FixedVector{N}}
+    M::Mat{N,N,T}
+    v::Vec{N,T}
+end
+
+function AffineTransformation{N,T1,T2}(M::Mat{N,N,T1}, v::Vec{N,T2})
+    T = promote_type(T1,T2)
+    AffineTransformation(Mat{N,N,T}(M), Vec{N,T}(v))
+end
+function AffineTransformation(R::Rotation2D)
+    AffineTransformation(transform_deriv(R, Vec(1,1)), Vec(0,0))
+end
+function AffineTransformation{N,T}(trans::Translation{N,T})
+    AffineTransformation(eye(Mat{N,N,T}), trans.dx)
+end
+
+function AffineTransformation(R::RotationXY)
+    AffineTransformation(transform_deriv(R, Vec(1,1,1)), Vec(0,0,0))
+end
+function AffineTransformation(R::RotationYZ)
+    AffineTransformation(transform_deriv(R, Vec(1,1,1)), Vec(0,0,0))
+end
+function AffineTransformation(R::RotationZX)
+    AffineTransformation(transform_deriv(R, Vec(1,1,1)), Vec(0,0,0))
+end
+
+function transform{N}(trans::AffineTransformation{N}, x::FixedVector{N})
+    trans.M*x + trans.v
+end
+
+function Base.inv(trans::AffineTransformation)
+    Minv = inv(trans.M)
+    AffineTransformation(Minv, -Minv*trans.v)
+end
+
+function compose(trans1::AbstractAffineTransformation,
+                 trans2::AbstractAffineTransformation)
+    # Convert to general affine, then compose.
+    t1 = AffineTransformation(trans1)
+    t2 = AffineTransformation(trans2)
+    AffineTransformation(t1.M*t2.M, t1.M*t2.v + t1.v)
+end
+
+function transform_deriv{N}(trans::AffineTransformation{N}, x::Point{N})
+    trans.M
+end
+
+function transform_deriv_params{N}(trans::AffineTransformation{N}, x::Point{N})
+    error("TODO")
+end
+

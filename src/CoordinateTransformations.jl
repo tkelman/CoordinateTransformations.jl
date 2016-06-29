@@ -44,6 +44,7 @@ export RotationPolar, Rotation2D
 export Rotation, RotationXY, RotationYZ, RotationZX
 export RotationYX, RotationZY, RotationXZ, euler_rotation
 
+export AffineTransformation
 #export RigidBodyTransformation, AffineTransformation
 
 include("core.jl")
